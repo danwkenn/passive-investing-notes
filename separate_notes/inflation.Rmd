@@ -1,0 +1,64 @@
+---
+title: "Inflation"
+author: "Daniel W. Kennedy"
+date: "04/12/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(data.table)
+library(ggplot2)
+library(lubridate)
+source('../R/inflate.R')
+```
+
+## Inflation
+
+```{r}
+cpi_data <- fread('../data/cpi_2021-12-04.csv')
+ggplot(data = cpi_data) + geom_line(mapping = aes(x = date, y = cpi)) +
+  labs(x = 'Date', y = 'Value')
+```
+
+How much did it rise quarter-on-quarter?
+
+```{r}
+cpi_data[,previous_quarter := date %m-% months(3)]
+cpi_data[cpi_data, on = c(previous_quarter = 'date'),
+         `:=`(previous_cpi = i.cpi)]
+cpi_data[,`:=`(inflation_per_quarter = cpi / previous_cpi - 1)]
+ggplot(data = cpi_data) + geom_line(mapping = aes(x = date, y = inflation_per_quarter)) +
+  labs(x = 'Date', y = 'Value')
+```
+
+What about annually? We can combine the quarter inflations to get an estimate of the annual inflation rate:
+
+```{r}
+cpi_data[, year := year(date %m+% months(3))]
+annual_inflation <- cpi_data[,.(inflation_per_annum = prod(inflation_per_quarter + 1) -1),.(year)]
+ggplot(data = annual_inflation) + geom_line(mapping = aes(x = year, y = inflation_per_annum)) +
+  labs(x = 'Date', y = 'Value') + 
+  annotate(geom = 'text', x = 1956, y = 0.2, label = 'Korean\nWar Boom') +
+  annotate(geom = 'text', x = 1975, y = 0.17, label = 'OPEC Oil Crisis') +
+  NULL
+```
+
+If we have a bank account with an annual interest rate of 2%, that we put $100 in 1990, then how has interest affected our balance, and how has inflation affected the value of that balance in real terms?
+
+```{r}
+bank_account <- data.table(date = as.Date(paste0(1990:2021,'-01-01')), balance = 100 * 1.02^(0:31))
+
+bank_account[,balance_realterms := inflate(balance, date = date, new_date = as.Date('1990-01-01'), cpi_table = cpi_data)]
+price = bank_account$balance
+date = bank_account$date
+new_date <- as.Date('1990-01-01')
+
+
+ggplot(data = bank_account) + geom_line(mapping = aes(x = date, y = balance)) +
+  geom_line(mapping = aes(x = date, y = balance_realterms)) +
+NULL  
+```
